@@ -1,65 +1,39 @@
-# Welcome to your Expo app 👋
+## About the Project
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+FreshReceipt helps users track household groceries and receipts, organize members in households, and detect items that are expiring or need attention. It combines a React Native (Expo) front end with a Python FastAPI backend and Postgres/Supabase for data, auth, and storage.
 
-## Get started
+Key goals:
 
-To start the app, in your terminal run:
+- Make it fast to scan and record purchase receipts.
+- Keep household members synchronized with simple permissions and roles.
+- Provide a privacy-first design where secrets live in environment variables and RLS enforces row-level access.
 
-```bash
-npm run start
-```
+This repository contains the Expo app UI, API server (FastAPI), database helpers, and RLS policy migrations used to run the project locally or on Supabase/EAS.
 
-In the output, you'll find options to open the app in:
+## Built With
 
-- [a development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [an Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [an iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+- Expo / React Native (app/) — UI, navigation (expo-router), mobile-first UX
+- TypeScript — frontend code
+- FastAPI (api/app/) — backend HTTP API and business logic (Python)
+- Supabase / Postgres — database, auth, RLS policies, and RPC functions
+- asyncio + asyncio.to_thread — safe use of synchronous Supabase Python client inside async FastAPI handlers
+- EAS / eas.json — build and CI configuration
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+## User Flow
 
-## Workflows
+1. User signs up or logs in via the mobile app (Supabase Auth).
+2. On first sign-in, the backend ensures the user has a primary household (RPC creates household + member atomically).
+3. User can scan receipts or manually add items; items are associated with a household and tracked for expiration.
+4. Household members (owner/admin/member roles) can invite others, view members, and manage items.
+5. Security: Row-Level Security (RLS) policies restrict data access to authenticated users and household members. A SECURITY DEFINER RPC is used for privileged operations that must bypass RLS safely.
 
-This project is configured to use [EAS Workflows](https://docs.expo.dev/eas/workflows/get-started/) to automate some development and release processes. These commands are set up in [`package.json`](./package.json) and can be run using NPM scripts in your terminal.
+## Roadmap
 
-### Previews
+Planned improvements and next steps:
 
-Run `npm run draft` to [publish a preview update](https://docs.expo.dev/eas/workflows/examples/publish-preview-update/) of your project, which can be viewed in Expo Go or in a development build.
-
-### Development Builds
-
-Run `npm run development-builds` to [create a development build](https://docs.expo.dev/eas/workflows/examples/create-development-builds/). Note - you'll need to follow the [Prerequisites](https://docs.expo.dev/eas/workflows/examples/create-development-builds/#prerequisites) to ensure you have the correct emulator setup on your machine.
-
-### Production Deployments
-
-Run `npm run deploy` to [deploy to production](https://docs.expo.dev/eas/workflows/examples/deploy-to-production/). Note - you'll need to follow the [Prerequisites](https://docs.expo.dev/eas/workflows/examples/deploy-to-production/#prerequisites) to ensure you're set up to submit to the Apple and Google stores.
-
-## Hosting
-
-Expo offers hosting for websites and API functions via EAS Hosting. See the [Getting Started](https://docs.expo.dev/eas/hosting/get-started/) guide to learn more.
-
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
-```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- Finish and test RLS policies and SECURITY DEFINER helpers (already included under db/policies/).
+- Add end-to-end tests for critical flows (auth, household creation, item scanning).
+- Improve offline support and syncing for the mobile app.
+- Add image OCR & ML integration for receipt parsing and auto-categorization.
+- CI: Add automated policy checks and a migration test harness.
+- UX: Add household settings, member notifications, and item recommendations.
