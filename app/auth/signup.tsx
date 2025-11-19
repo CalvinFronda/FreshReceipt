@@ -1,4 +1,3 @@
-// app/auth/login.tsx
 import { useAuth } from "@/contexts/AuthContext";
 import { router } from "expo-router";
 import { useState } from "react";

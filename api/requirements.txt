@@ -1,0 +1,30 @@
+# Core
+fastapi
+uvicorn[standard]
+python-dotenv
+pydantic
+pydantic-settings
+pydantic[email]
+
+# Supabase
+supabase
+postgrest
+
+# OCR & AI
+openai
+veryfi
+
+# Storage
+httpx
+python-multipart
+
+# Security
+python-jose[cryptography]
+passlib[bcrypt]
+
+# Utils
+python-dateutil
+
+# Development
+pytest
+pytest-asyncio
