@@ -48,6 +48,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email,
       password,
     });
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    console.log("TOKEN", session?.access_token);
+
     if (error) throw error;
   };
 

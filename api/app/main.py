@@ -3,9 +3,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-
-# Import router AFTER app is created (sometimes fixes issues)
 from app.routers.auth import router as auth_router
+from app.routers.households import router as household_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -23,8 +22,9 @@ app.add_middleware(
 )
 
 
-# Include the auth router
+# routers
 app.include_router(auth_router, prefix=settings.API_V1_PREFIX)
+app.include_router(household_router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/")

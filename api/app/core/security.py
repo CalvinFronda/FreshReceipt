@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any, Dict
 
 from fastapi import HTTPException, status
@@ -19,10 +20,13 @@ async def verify_supabase_token(token: str) -> Dict[str, Any]:
         HTTPException: If token is invalid or expired
     """
     try:
-        # Verify token with Supabase Auth API
-        response = supabase.auth.get_user(token)
+        # The Supabase Python client is synchronous. Run the call in a thread
+        # so this function can remain async and callers can `await` it.
+        response = await asyncio.to_thread(lambda: supabase.auth.get_user(token))
 
-        if not response.user:
+        # `response` is an APIResponse; if no user, treat as unauthorized
+        user = getattr(response, "user", None)
+        if not user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid authentication credentials",
@@ -31,10 +35,10 @@ async def verify_supabase_token(token: str) -> Dict[str, Any]:
 
         # Return user data
         return {
-            "id": response.user.id,
-            "email": response.user.email,
-            "user_metadata": response.user.user_metadata,
-            "created_at": response.user.created_at.isoformat(),
+            "id": user.id,
+            "email": user.email,
+            "user_metadata": getattr(user, "user_metadata", None),
+            "created_at": getattr(user, "created_at").isoformat(),
         }
 
     except Exception as e:
