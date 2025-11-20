@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     # Supabase
     SUPABASE_URL: str
     SUPABASE_ANON_KEY: str
+    SUPABASE_SERVICE_ROLE_KEY: str
 
     # OCR & AI (optional for now)
     VERYFI_CLIENT_ID: str | None = None

@@ -1,8 +1,9 @@
+import asyncio
 from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 
-from app.core.supabase import supabase
+from app.core.supabase import supabase_admin
 from app.dependencies.auth import get_current_user
 from app.models.auth import User
 
@@ -12,11 +13,13 @@ async def get_user_households(current_user: User = Depends(get_current_user)) ->
     Get all households that the current user belongs to.
     """
     try:
-        result = (
-            supabase.table("household_members")
-            .select("household_id, role, households(*)")
-            .eq("user_id", current_user.id)
-            .execute()
+        result = await asyncio.to_thread(
+            lambda: (
+                supabase_admin.table("household_members")
+                .select("household_id, role, households(*)")
+                .eq("user_id", current_user.id)
+                .execute()
+            )
         )
 
         return result.data
@@ -32,39 +35,66 @@ async def get_user_primary_household(
 ) -> str:
     """
     Get the user's primary (first) household ID.
-    Creates one if the user has no households.
+    Creates one if the user has no households using the DB RPC.
     """
     try:
         # Check if user has any households
-        result = (
-            supabase.table("household_members")
-            .select("household_id")
-            .eq("user_id", current_user.id)
-            .limit(1)
-            .execute()
+        result = await asyncio.to_thread(
+            lambda: (
+                supabase_admin.table("household_members")
+                .select("household_id")
+                .eq("user_id", current_user.id)
+                .limit(1)
+                .execute()
+            )
         )
 
         if result.data and len(result.data) > 0:
-            return result.data[0]["household_id"]
+            hid = result.data[0]["household_id"]
+            return hid
 
-        # Create a default household for the user
-        household_result = (
-            supabase.table("households")
-            .insert(
+        # Create a default household using the RPC
+
+        rpc_result = await asyncio.to_thread(
+            lambda: supabase_admin.rpc(
+                "create_household_with_member",
                 {
-                    "name": f"{current_user.email}'s Household",
-                    "created_by": current_user.id,
-                }
-            )
-            .execute()
+                    "payload": {
+                        "user_id": current_user.id,
+                        "email": current_user.email,
+                        "name": f"{current_user.email}'s Household",
+                    }
+                },
+            ).execute()
         )
 
-        household_id = household_result.data[0]["id"]
+        if hasattr(rpc_result, "error") and rpc_result.error:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to create household: {rpc_result.error}",
+            )
 
-        # Add user as owner
-        supabase.table("household_members").insert(
-            {"household_id": household_id, "user_id": current_user.id, "role": "owner"}
-        ).execute()
+        # Extract household id from RPC response
+        rpc_data = getattr(rpc_result, "data", None) or (
+            rpc_result.get("data") if isinstance(rpc_result, dict) else None
+        )
+        if not rpc_data:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create household: no data returned",
+            )
+
+        # Normalize: RPC returns a household row (dict or object)
+        if isinstance(rpc_data, dict):
+            household_id = rpc_data.get("id")
+        else:
+            household_id = getattr(rpc_data, "id", None)
+
+        if not household_id:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to extract household id from RPC response",
+            )
 
         return household_id
 
@@ -96,14 +126,15 @@ async def verify_household_access(
         HTTPException: If user doesn't have access or required role
     """
     try:
-        result = (
-            supabase.table("household_members")
-            .select("role")
-            .eq("household_id", household_id)
-            .eq("user_id", current_user.id)
-            .execute()
+        result = await asyncio.to_thread(
+            lambda: (
+                supabase_admin.table("household_members")
+                .select("role")
+                .eq("household_id", household_id)
+                .eq("user_id", current_user.id)
+                .execute()
+            )
         )
-
         if not result.data or len(result.data) == 0:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

@@ -1,9 +1,8 @@
-# api/app/routers/households.py
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.core.supabase import supabase
+from app.core.supabase import supabase, supabase_admin
 from app.dependencies.auth import get_current_user
 from app.dependencies.household import (
     get_user_households,
@@ -20,7 +19,6 @@ from app.services.households import (
     get_or_create_primary_household,
     get_primary_household_id,
 )
-
 
 router = APIRouter(prefix="/households", tags=["Households"])
 
@@ -56,7 +54,9 @@ async def create_household(
     """
     try:
         # Create or fetch primary household
-        household_result = await get_or_create_primary_household(current_user, household_data.name)
+        household_result = await get_or_create_primary_household(
+            current_user, household_data.name
+        )
 
         # Support different return shapes: dict (created row), APIResponse-like
         if hasattr(household_result, "data"):
@@ -86,7 +86,6 @@ async def create_household(
 
 @router.get("/{household_id}", response_model=HouseholdWithRole)
 async def get_household(
-    household_id: str,
     access: dict = Depends(verify_household_access),
     current_user: User = Depends(get_current_user),
 ):
@@ -114,7 +113,8 @@ async def get_household(
 
 @router.get("/{household_id}/members", response_model=List[HouseholdMember])
 async def list_household_members(
-    household_id: str, access: dict = Depends(verify_household_access)
+    household_id: str,
+    access: dict = Depends(verify_household_access),
 ):
     """
     Get all members of a household.
@@ -131,7 +131,7 @@ async def list_household_members(
         members = []
         for member in result.data:
             # Get user email from auth.users
-            user_result = supabase.auth.admin.get_user_by_id(member["user_id"])
+            user_result = supabase_admin.auth.admin.get_user_by_id(member["user_id"])
             members.append(
                 {
                     **member,
@@ -159,14 +159,14 @@ async def invite_member(
     Requires admin or owner role.
     """
     # Verify user has admin/owner role
-    access = await verify_household_access(
+    await verify_household_access(
         household_id=household_id, current_user=current_user, required_role="admin"
     )
 
     try:
         # Find user by email
         # Note: This requires service role key to access auth.users
-        user_result = supabase.auth.admin.list_users()
+        user_result = supabase_admin.auth.admin.list_users()
         target_user = None
 
         for user in user_result:

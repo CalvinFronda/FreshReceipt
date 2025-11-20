@@ -1,7 +1,8 @@
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
 from app.core.security import verify_supabase_token
 from app.models.auth import User
-from fastapi import Depends
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 security = HTTPBearer()
 
@@ -21,6 +22,11 @@ async def get_current_user(
     # Verify token and get user data
 
     user_data = await verify_supabase_token(token)
+    if not user_data:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+        )
 
     return User(**user_data)
 
