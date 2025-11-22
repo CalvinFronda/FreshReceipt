@@ -1,4 +1,3 @@
-# api/app/routers/receipts.py
 import asyncio
 from datetime import datetime, timezone
 from typing import List
@@ -125,7 +124,7 @@ async def upload_receipt(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to create receipt record",
             )
-
+        print("DEBUGGER: receipt", receipt)
         return ReceiptUploadResponse(
             id=receipt["id"],
             image_url=receipt["image_url"],

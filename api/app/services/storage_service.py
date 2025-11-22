@@ -67,29 +67,26 @@ async def upload_receipt_image(
                 detail=f"Failed to upload image: {result['error']}",
             )
 
-        # Get public URL - Supabase storage.get_public_url
-        public_url_result = await asyncio.to_thread(
-            lambda: supabase_admin.storage.from_("receipts").get_public_url(filename)
+        # Get public URL - Supabase storage.create_signed_url
+        # expires in a month (maybe we change?)
+        signed_url_result = await asyncio.to_thread(
+            lambda: supabase_admin.storage.from_("receipts").create_signed_url(
+                filename, 2592000
+            )
         )
 
         # Handle different response formats
-        if isinstance(public_url_result, dict):
-            if public_url_result.get("error"):
+        if isinstance(signed_url_result, dict):
+            if signed_url_result.get("error"):
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Failed to get public URL: {public_url_result['error']}",
+                    detail=f"Failed to get signed URL: {signed_url_result['error']}",
                 )
-            # Supabase returns dict with 'publicUrl' key
-            public_url = public_url_result.get("publicUrl") or public_url_result.get(
-                "data"
-            )
-            if public_url:
-                return public_url
 
-        # Fallback: construct URL manually if needed
-        from app.core.config import settings
+            signed_url = signed_url_result.get("signedURL")
 
-        return f"{settings.SUPABASE_URL}/storage/v1/object/public/receipts/{filename}"
+            if signed_url:
+                return signed_url
 
     except HTTPException:
         raise
