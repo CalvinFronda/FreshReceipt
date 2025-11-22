@@ -316,6 +316,7 @@ async def process_receipt_ocr(
                 image_url=receipt["image_url"],
                 receipt_id=receipt_id,
                 household_id=receipt["household_id"],
+                user_id=current_user.id,
             )
 
             # Fetch and return updated receipt

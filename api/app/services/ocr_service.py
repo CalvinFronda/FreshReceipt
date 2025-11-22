@@ -1,31 +1,15 @@
-"""
-OCR Service for processing receipts using Veryfi API.
-Handles document upload, processing, and data extraction.
-"""
-
 import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 import httpx
+from helpers import get_nested
 
 from app.core.config import settings
 from app.core.supabase import supabase
 
 logger = logging.getLogger(__name__)
-
-
-def get_nested(data, path, default=None):
-    keys = path.split(".")
-    for key in keys:
-        if isinstance(data, dict):
-            data = data.get(key)
-        else:
-            return default
-        if data is None:
-            return default
-    return data
 
 
 class VeryfiOCRService:
@@ -52,6 +36,7 @@ class VeryfiOCRService:
         image_url: str,
         receipt_id: str,
         household_id: str,
+        user_id: str,
     ) -> Dict[str, Any]:
         """
         Process a receipt image from a URL using Veryfi OCR.
@@ -60,12 +45,10 @@ class VeryfiOCRService:
             image_url: The public URL of the receipt image (from Supabase Storage)
             receipt_id: The ID of the receipt record in the database
             household_id: The household ID for the receipt
+            user_id: The ID of the user who uploaded the receipt (for added_by)
 
         Returns:
             Dictionary with OCR results containing extracted data
-
-        Raises:
-            Exception: If OCR processing fails
         """
         try:
             # Update receipt status to "processing"
@@ -83,14 +66,24 @@ class VeryfiOCRService:
             # Update receipt with OCR results
             await self._update_receipt_with_ocr_data(receipt_id, extracted_data)
 
-            # Update receipt status to "completed"
+            try:
+                await self._create_food_items_from_receipt(
+                    receipt_id=receipt_id,
+                    household_id=household_id,
+                    user_id=user_id,
+                    extracted_data=extracted_data,
+                )
+            except Exception as e:
+                logger.error(
+                    f"Failed to create food items for receipt {receipt_id}: {str(e)}"
+                )
+
             await self._update_receipt_status(receipt_id, "completed")
 
             return extracted_data
 
         except Exception as e:
             logger.error(f"OCR processing failed for receipt {receipt_id}: {str(e)}")
-            # Update receipt status to "failed" and store error
             await self._update_receipt_status(
                 receipt_id, "failed", error_message=str(e)
             )
@@ -98,29 +91,25 @@ class VeryfiOCRService:
 
     async def _call_veryfi_api(self, image_url: str) -> Dict[str, Any]:
         """
-        Call Veryfi API with the image URL.
+        Call Veryfi API with the image as base64-encoded data.
+
+        Downloads the image from the provided URL, encodes it as base64,
+        and sends it to Veryfi API in the JSON payload.
 
         Args:
             image_url: The public URL of the receipt image
 
         Returns:
             The JSON response from Veryfi API
-
-        Raises:
-            Exception: If API call fails
         """
         headers = {
-            "Content-Type": "application/json",
             "Accept": "application/json",
             "CLIENT-ID": self.client_id,
             "AUTHORIZATION": self._get_auth_header(),
+            "Content-Type": "application/json",
         }
-
         payload = {
-            "file_url": image_url,
-            "categories": [],
-            "tags": [],
-            "compute": True,
+            "file_urls": [image_url],
             "country": "US",
             "document_type": "receipt",
         }
@@ -157,15 +146,6 @@ class VeryfiOCRService:
         """
         Extract relevant data from Veryfi API response.
 
-        Veryfi response format includes:
-        - vendor/merchant info (name, phone, website)
-        - line items
-        - totals
-        - tax information
-        - date/time
-        - payment method
-        - etc.
-
         Args:
             veryfi_response: The full response from Veryfi API
 
@@ -173,8 +153,6 @@ class VeryfiOCRService:
             Simplified dictionary with extracted data
         """
         try:
-            # Extract key fields from Veryfi response
-
             extracted = {
                 "store_name": get_nested(
                     veryfi_response, "vendor.name.value", "Unknown"
@@ -289,6 +267,217 @@ class VeryfiOCRService:
             logger.error(f"Error updating receipt with OCR data: {str(e)}")
             raise
 
+    async def _create_food_items_from_receipt(
+        self,
+        receipt_id: str,
+        household_id: str,
+        user_id: str,
+        extracted_data: Dict[str, Any],
+    ) -> None:
+        """
+        Create food items from receipt line items.
 
-# Global instance
+        Args:
+            receipt_id: The ID of the receipt
+            household_id: The household ID
+            user_id: The user ID (added_by)
+            extracted_data: The extracted data from OCR processing
+        """
+        try:
+            line_items = extracted_data.get("line_items", [])
+            if not line_items:
+                logger.info(f"No line items found for receipt {receipt_id}")
+                return
+
+            # Fetch the purchase date from extracted data
+            purchase_date = extracted_data.get("purchase_date")
+            if isinstance(purchase_date, str):
+                purchase_date = datetime.fromisoformat(
+                    purchase_date.replace("Z", "+00:00")
+                )
+            elif isinstance(purchase_date, datetime):
+                pass
+            else:
+                # Fallback to now if not available
+                purchase_date = datetime.now(timezone.utc)
+
+            # Hardcoded constants going to change when we get categories working
+            OTHER_CATEGORY_ID = "1884005d-dcbe-4632-b99e-ad379778e500"
+            DEFAULT_STORAGE = "fridge"
+            DEFAULT_EXPIRY_DAYS = 30  # Fallback: 30 days if category has no default
+
+            # Fetch default expiry days for the "other" category
+            default_expiry_days = await self._get_category_default_expiry(
+                OTHER_CATEGORY_ID
+            )
+
+            # Use fallback if category default not found
+            if default_expiry_days is None:
+                default_expiry_days = DEFAULT_EXPIRY_DAYS
+                logger.info(f"Using fallback expiry days: {DEFAULT_EXPIRY_DAYS} days")
+
+            # Transform line items to food items
+            food_items = []
+            for line_item in line_items:
+                try:
+                    name = self._extract_line_item_name(line_item)
+                    if not name:
+                        logger.warning(f"Skipping line item with no name: {line_item}")
+                        continue
+
+                    price = self._extract_line_item_price(line_item)
+                    quantity = self._extract_line_item_quantity(line_item)
+
+                    # Calculate expiry date - always provide a value
+                    if default_expiry_days and default_expiry_days > 0:
+                        from datetime import timedelta
+
+                        expiry_date = purchase_date + timedelta(
+                            days=default_expiry_days
+                        )
+                    else:
+                        # Fallback: use 30 days if somehow it's still invalid
+                        from datetime import timedelta
+
+                        expiry_date = purchase_date + timedelta(days=30)
+
+                    food_item = {
+                        "household_id": household_id,
+                        "receipt_id": receipt_id,
+                        "added_by": user_id,
+                        "name": name,
+                        "category_id": OTHER_CATEGORY_ID,
+                        "price": price,
+                        "quantity": quantity,
+                        "unit": None,
+                        "purchase_date": purchase_date.isoformat(
+                            timespec="microseconds"
+                        ).replace("+00:00", "Z"),
+                        "expiry_date": expiry_date.isoformat(
+                            timespec="microseconds"
+                        ).replace("+00:00", "Z"),
+                        "manual_expiry": False,
+                        "is_consumed": False,
+                        "storage_location": DEFAULT_STORAGE,
+                    }
+                    food_items.append(food_item)
+
+                except Exception as e:
+                    logger.warning(f"Error processing line item: {str(e)}, skipping...")
+                    continue
+
+            if not food_items:
+                logger.info(f"No valid food items to create for receipt {receipt_id}")
+                return
+
+            # Batch insert food items
+            def insert_food_items():
+                return supabase.table("food_items").insert(food_items).execute()
+
+            result = await asyncio.to_thread(insert_food_items)
+
+            if hasattr(result, "error") and result.error:
+                raise Exception(f"Database error: {result.error}")
+
+            logger.info(
+                f"Created {len(food_items)} food items for receipt {receipt_id}"
+            )
+
+        except Exception as e:
+            logger.error(f"Error creating food items from receipt: {str(e)}")
+            raise
+
+    async def _get_category_default_expiry(self, category_id: str) -> Optional[int]:
+        """
+        Get the default shelf life days for a food category.
+
+        Args:
+            category_id: The ID of the food category
+
+        Returns:
+            The default shelf life days, or None if not found
+        """
+        try:
+
+            def fetch_category():
+                return (
+                    supabase.table("food_categories")
+                    .select("default_shelf_life_days")
+                    .eq("id", category_id)
+                    .single()
+                    .execute()
+                )
+
+            result = await asyncio.to_thread(fetch_category)
+
+            if hasattr(result, "error") and result.error:
+                logger.warning(
+                    f"Could not fetch category {category_id}: {result.error}"
+                )
+                return None
+
+            if result.data:
+                return result.data.get("default_shelf_life_days")
+            return None
+
+        except Exception as e:
+            logger.warning(f"Error fetching category default expiry: {str(e)}")
+            return None
+
+    def _extract_line_item_name(self, line_item: Dict[str, Any]) -> Optional[str]:
+        """
+        Extract the item name from a Veryfi line item.
+
+        Args:
+            line_item: The line item from Veryfi response
+
+        Returns:
+            The item name, or None if not found
+        """
+        # Try different possible name fields
+        name = (
+            line_item.get("description")
+            or line_item.get("full_description")
+            or line_item.get("normalized_description")
+            or get_nested(line_item, "product_info.expanded_description")
+        )
+        return name.strip() if name else None
+
+    def _extract_line_item_price(self, line_item: Dict[str, Any]) -> float:
+        """
+        Extract the price from a Veryfi line item.
+
+        Defaults to 1 if not found.
+
+        Args:
+            line_item: The line item from Veryfi response
+
+        Returns:
+            The price, or 1.0 if not found
+        """
+        price = line_item.get("total") or line_item.get("price")
+        try:
+            return float(price) if price else 1.0
+        except (ValueError, TypeError):
+            return 1.0
+
+    def _extract_line_item_quantity(self, line_item: Dict[str, Any]) -> int:
+        """
+        Extract the quantity from a Veryfi line item.
+
+        Defaults to 1 if not found.
+
+        Args:
+            line_item: The line item from Veryfi response
+
+        Returns:
+            The quantity, or 1 if not found
+        """
+        quantity = line_item.get("quantity")
+        try:
+            return int(quantity) if quantity else 1
+        except (ValueError, TypeError):
+            return 1
+
+
 ocr_service = VeryfiOCRService()
