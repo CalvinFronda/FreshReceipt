@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_ROLE_KEY: str
 
     # OCR & AI (optional for now)
+    VERYFI_URL: str | None = None
     VERYFI_CLIENT_ID: str | None = None
     VERYFI_CLIENT_SECRET: str | None = None
     VERYFI_USERNAME: str | None = None

@@ -247,3 +247,108 @@ async def get_receipt(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch receipt: {str(e)}",
         )
+
+
+@router.post(
+    "/{receipt_id}/process-ocr", response_model=Receipt, status_code=status.HTTP_200_OK
+)
+async def process_receipt_ocr(
+    receipt_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Trigger OCR processing for a receipt using Veryfi API.
+
+    This endpoint processes the receipt image and extracts data like:
+    - Store name
+    - Total amount
+    - Tax information
+    - Line items
+    - Confidence score
+
+    Requires:
+    - Valid JWT token
+    - User must be a member of the household that owns the receipt
+    - Receipt must have an image_url
+    """
+    try:
+        from app.services.ocr_service import ocr_service
+
+        # First, get the receipt to find its household_id and image_url
+        result = await asyncio.to_thread(
+            lambda: (
+                supabase.table("receipts")
+                .select("*")
+                .eq("id", receipt_id)
+                .single()
+                .execute()
+            )
+        )
+
+        if hasattr(result, "error") and result.error:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Receipt not found"
+            )
+
+        if not result.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Receipt not found"
+            )
+
+        receipt = result.data
+
+        # Verify user has access to the household
+        await verify_household_access(
+            household_id=receipt["household_id"], current_user=current_user
+        )
+
+        # Verify receipt has an image
+        if not receipt.get("image_url"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Receipt does not have an image",
+            )
+
+        # Trigger OCR processing (non-blocking - process in background)
+        # In production, this could be queued to a background task
+        try:
+            await ocr_service.process_receipt_from_url(
+                image_url=receipt["image_url"],
+                receipt_id=receipt_id,
+                household_id=receipt["household_id"],
+            )
+
+            # Fetch and return updated receipt
+            updated_result = await asyncio.to_thread(
+                lambda: (
+                    supabase.table("receipts")
+                    .select("*")
+                    .eq("id", receipt_id)
+                    .single()
+                    .execute()
+                )
+            )
+
+            if hasattr(updated_result, "error") and updated_result.error:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to fetch updated receipt",
+                )
+
+            return updated_result.data
+
+        except Exception as e:
+            # OCR processing failed, but receipt still exists
+            # The error has been stored in the receipt record
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"OCR processing failed: {str(e)}",
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to process receipt OCR: {str(e)}",
+        )
