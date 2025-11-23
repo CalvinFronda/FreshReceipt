@@ -105,6 +105,22 @@ async def get_user_primary_household(
         )
 
 
+async def get_current_household(
+    household_id: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """
+    Get the current household.
+    """
+    if household_id:
+        await verify_household_access(household_id, current_user)
+        return household_id
+
+
+    return await get_user_primary_household(current_user)
+
+
+
 async def verify_household_access(
     household_id: str,
     current_user: User = Depends(get_current_user),

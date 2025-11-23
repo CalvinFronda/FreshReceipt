@@ -1,17 +1,19 @@
 import asyncio
 import uuid
 from datetime import datetime, timezone
-from typing import Any
 
 from fastapi import HTTPException, status
 
 from app.core.supabase import supabase_admin
+from app.models.auth import User
+
+EXPIRES_IN = 300
 
 
 async def upload_receipt_image(
     file_content: bytes,
     file_extension: str,
-    current_user: Any,
+    current_user: User,
     household_id: str,
 ) -> str:
     """
@@ -49,7 +51,7 @@ async def upload_receipt_image(
         # Generate unique filename: receipts/{household_id}/{user_id}/{timestamp}_{uuid}.{ext}
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         unique_id = str(uuid.uuid4())[:8]
-        filename = f"{household_id}/{user_id}/{timestamp}_{unique_id}.{file_extension}"
+        filename = f"receipts/{household_id}/{timestamp}_{unique_id}.{file_extension}"
 
         # Upload to Supabase Storage bucket 'receipts'
         result = await asyncio.to_thread(
@@ -68,10 +70,10 @@ async def upload_receipt_image(
             )
 
         # Get public URL - Supabase storage.create_signed_url
-        # expires in a month (maybe we change?)
+        # expires in a 5 mins
         signed_url_result = await asyncio.to_thread(
             lambda: supabase_admin.storage.from_("receipts").create_signed_url(
-                filename, 2592000
+                filename, EXPIRES_IN
             )
         )
 

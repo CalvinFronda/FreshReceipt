@@ -1,6 +1,6 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.core.supabase import supabase, supabase_admin
 from app.dependencies.auth import get_current_user
@@ -114,14 +114,19 @@ async def get_household(
 @router.get("/{household_id}/members", response_model=List[HouseholdMember])
 async def list_household_members(
     household_id: str,
-    access: dict = Depends(verify_household_access),
+    request: Request,
+    _access: dict = Depends(verify_household_access),
 ):
     """
     Get all members of a household.
     """
     try:
+        from app.core.supabase import get_authenticated_supabase
+
+        auth_supabase = get_authenticated_supabase(request)
+
         result = (
-            supabase.table("household_members")
+            auth_supabase.table("household_members")
             .select("*")
             .eq("household_id", household_id)
             .execute()

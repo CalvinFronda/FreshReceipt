@@ -2,11 +2,11 @@ import asyncio
 from datetime import datetime, timezone
 from typing import List
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from app.core.supabase import supabase
 from app.dependencies.auth import get_current_user
-from app.dependencies.household import verify_household_access
+from app.dependencies.household import get_current_household, verify_household_access
 from app.models.auth import User
 from app.models.receipt import Receipt, ReceiptUploadResponse
 from app.services.storage_service import upload_receipt_image
@@ -39,25 +39,19 @@ def get_file_extension(filename: str) -> str:
     "/upload", response_model=ReceiptUploadResponse, status_code=status.HTTP_201_CREATED
 )
 async def upload_receipt(
-    household_id: str = Form(...),
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
+    household: str = Depends(get_current_household),
 ):
     """
     Upload a receipt image and create a receipt record.
 
     Requires:
     - Valid JWT token
-    - household_id: The household to upload to (passed by frontend)
     - User must be a member of the household
     - Image file (JPEG, PNG, or WebP)
     """
     try:
-        # Verify user has access to the household (fails fast if not a member)
-        await verify_household_access(
-            household_id=household_id, current_user=current_user
-        )
-
         # Validate file type
         if file.content_type not in ALLOWED_IMAGE_TYPES:
             raise HTTPException(
@@ -90,8 +84,10 @@ async def upload_receipt(
             file_content=file_content,
             file_extension=file_extension,
             current_user=current_user,
-            household_id=household_id,
+            household_id=household,
         )
+
+        from app.core.supabase import supabase_admin
 
         # Create receipt record in database
         purchase_date = (
@@ -101,7 +97,7 @@ async def upload_receipt(
         )
 
         receipt_data = {
-            "household_id": household_id,
+            "household_id": household,
             "purchase_date": purchase_date,
             "image_url": image_url,
             "uploaded_by": current_user.id,
@@ -109,7 +105,7 @@ async def upload_receipt(
         }
 
         result = await asyncio.to_thread(
-            lambda: supabase.table("receipts").insert(receipt_data).execute()
+            lambda: supabase_admin.table("receipts").insert(receipt_data).execute()
         )
 
         if hasattr(result, "error") and result.error:
@@ -124,7 +120,7 @@ async def upload_receipt(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to create receipt record",
             )
-        print("DEBUGGER: receipt", receipt)
+
         return ReceiptUploadResponse(
             id=receipt["id"],
             image_url=receipt["image_url"],
@@ -137,10 +133,6 @@ async def upload_receipt(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"DEBUG: Exception caught: {type(e).__name__}: {str(e)}")
-        import traceback
-
-        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to upload receipt: {str(e)}",
