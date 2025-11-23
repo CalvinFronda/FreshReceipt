@@ -57,10 +57,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
-  };
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
+      if (session) {
+        const { error } = await supabase.auth.signOut();
+        if (error) {
+          if (error.message.includes("Auth session missing")) {
+            console.log(
+              "Session already missing, proceeding to sign out locally."
+            );
+          } else {
+            throw error;
+          }
+        }
+      } else {
+        console.log("No active session to sign out from");
+      }
+    } catch (error: any) {
+      console.error("Sign out error:", error);
+
+      if (error.message && error.message.includes("Auth session missing")) {
+        // ignore
+      }
+    } finally {
+      // This fixes an issue testing where the session was over, but user was still logged in
+      setSession(null);
+      setUser(null);
+    }
+  };
   return (
     <AuthContext.Provider
       value={{ user, session, loading, signUp, signIn, signOut }}

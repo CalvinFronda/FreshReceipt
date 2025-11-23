@@ -1,14 +1,23 @@
 // app/auth/login.tsx
+import { ThemedView } from "@/components/themed-view";
 import { useAuth } from "@/contexts/AuthContext";
+import { useThemeColor } from "@/hooks/use-theme-color";
 import { router } from "expo-router";
 import { useState } from "react";
-import { Alert, Button, StyleSheet, TextInput, View } from "react-native";
+import { Alert, Button, StyleSheet, TextInput } from "react-native";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const { signIn } = useAuth();
+
+  const textColor = useThemeColor({}, "text");
+  const placeholderColor = useThemeColor(
+    { light: "#9BA1A6", dark: "#687076" },
+    "icon"
+  );
+  const borderColor = useThemeColor({ light: "#ccc", dark: "#333" }, "icon");
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -28,18 +37,20 @@ export default function LoginScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <ThemedView style={styles.container}>
       <TextInput
-        style={styles.input}
+        style={[styles.input, { color: textColor, borderColor: borderColor }]}
         placeholder="Email"
+        placeholderTextColor={placeholderColor}
         value={email}
         onChangeText={setEmail}
         autoCapitalize="none"
         keyboardType="email-address"
       />
       <TextInput
-        style={styles.input}
+        style={[styles.input, { color: textColor, borderColor: borderColor }]}
         placeholder="Password"
+        placeholderTextColor={placeholderColor}
         value={password}
         onChangeText={setPassword}
         secureTextEntry
@@ -53,7 +64,7 @@ export default function LoginScreen() {
         title="Need an account? Sign Up"
         onPress={() => router.push("/auth/signup")}
       />
-    </View>
+    </ThemedView>
   );
 }
 
@@ -66,7 +77,6 @@ const styles = StyleSheet.create({
   input: {
     height: 50,
     borderWidth: 1,
-    borderColor: "#ccc",
     borderRadius: 8,
     paddingHorizontal: 15,
     marginBottom: 15,

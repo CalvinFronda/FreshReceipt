@@ -1,112 +1,153 @@
-import { Image } from "expo-image";
-import { Platform, StyleSheet } from "react-native";
-
-import { HelloWave } from "@/components/hello-wave";
-import ParallaxScrollView from "@/components/parallax-scroll-view";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
-import { useAuth } from "@/contexts/AuthContext";
-import { Link } from "expo-router";
-import { Button } from "react-native";
+import { useThemeColor } from "@/hooks/use-theme-color";
+import { StatusBar } from "expo-status-bar";
+import { FlatList, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-export default function HomeScreen() {
-  const { signOut } = useAuth();
+// Mocking the FoodItem model from api/app/models/food_item.py
+interface FoodItem {
+  id: string;
+  name: string;
+  price: number;
+  quantity: number;
+  unit?: string;
+  purchase_date: string; // ISO string for simplicity in frontend
+  expiry_date?: string;
+}
+
+const MOCK_INVENTORY: FoodItem[] = [
+  {
+    id: "1",
+    name: "Organic Bananas",
+    price: 2.99,
+    quantity: 1,
+    unit: "bunch",
+    purchase_date: "2023-10-25T10:00:00Z",
+    expiry_date: "2023-11-01T00:00:00Z",
+  },
+  {
+    id: "2",
+    name: "Almond Milk",
+    price: 4.49,
+    quantity: 1,
+    unit: "carton",
+    purchase_date: "2023-10-26T14:30:00Z",
+    expiry_date: "2023-11-15T00:00:00Z",
+  },
+  {
+    id: "3",
+    name: "Sourdough Bread",
+    price: 5.5,
+    quantity: 1,
+    unit: "loaf",
+    purchase_date: "2023-10-27T09:15:00Z",
+    expiry_date: "2023-11-03T00:00:00Z",
+  },
+  {
+    id: "4",
+    name: "Eggs (Dozen)",
+    price: 3.99,
+    quantity: 2,
+    unit: "carton",
+    purchase_date: "2023-10-28T11:00:00Z",
+    expiry_date: "2023-11-20T00:00:00Z",
+  },
+  {
+    id: "5",
+    name: "Spinach",
+    price: 2.49,
+    quantity: 1,
+    unit: "bag",
+    purchase_date: "2023-10-29T16:45:00Z",
+    expiry_date: "2023-11-05T00:00:00Z",
+  },
+];
+
+export default function InventoryScreen() {
+  const backgroundColor = useThemeColor({}, "background");
+
+  const renderItem = ({ item }: { item: FoodItem }) => (
+    <View style={styles.itemContainer}>
+      <View style={styles.itemInfo}>
+        <ThemedText type="defaultSemiBold" style={styles.itemName}>
+          {item.name}
+        </ThemedText>
+        <ThemedText style={styles.itemDetails}>
+          {item.quantity} {item.unit ? item.unit : ""} • Purchased:{" "}
+          {new Date(item.purchase_date).toLocaleDateString()}
+        </ThemedText>
+      </View>
+      <View style={styles.itemPrice}>
+        <ThemedText type="defaultSemiBold">${item.price.toFixed(2)}</ThemedText>
+        {item.expiry_date && (
+          <Text style={styles.expiryDate}>
+            Exp: {new Date(item.expiry_date).toLocaleDateString()}
+          </Text>
+        )}
+      </View>
+    </View>
+  );
 
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: "#A1CEDC", dark: "#1D3D47" }}
-      headerImage={
-        <Image
-          source={require("@/assets/images/partial-react-logo.png")}
-          style={styles.reactLogo}
-        />
-      }
-    >
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-        <Button title="Sign out" onPress={() => signOut()} />
+    <SafeAreaView style={[styles.container, { backgroundColor }]}>
+      <StatusBar style="auto" />
+      <ThemedView style={styles.header}>
+        <ThemedText type="title">Inventory</ThemedText>
       </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit{" "}
-          <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText>{" "}
-          to see changes. Press{" "}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: "cmd + d",
-              android: "cmd + m",
-              web: "F12",
-            })}
-          </ThemedText>{" "}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction
-              title="Action"
-              icon="cube"
-              onPress={() => alert("Action pressed")}
-            />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert("Share pressed")}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert("Delete pressed")}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
-
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">
-            npm run reset-project
-          </ThemedText>{" "}
-          to get a fresh <ThemedText type="defaultSemiBold">app</ThemedText>{" "}
-          directory. This will move the current{" "}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{" "}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+      <FlatList
+        data={MOCK_INVENTORY}
+        renderItem={renderItem}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.listContent}
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
+      />
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
+  container: {
+    flex: 1,
+  },
+  header: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 10,
+  },
+  listContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  itemContainer: {
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    gap: 8,
+    paddingVertical: 16,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  itemInfo: {
+    flex: 1,
+    marginRight: 10,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: "absolute",
+  itemName: {
+    fontSize: 16,
+    marginBottom: 4,
+  },
+  itemDetails: {
+    fontSize: 14,
+    color: "#888",
+  },
+  itemPrice: {
+    alignItems: "flex-end",
+  },
+  expiryDate: {
+    fontSize: 12,
+    color: "#e74c3c",
+    marginTop: 2,
+  },
+  separator: {
+    height: 1,
+    backgroundColor: "#f0f0f0",
+    opacity: 0.5,
   },
 });

@@ -132,19 +132,8 @@ async def list_household_members(
             .execute()
         )
 
-        # Fetch user emails for each member
-        members = []
-        for member in result.data:
-            # Get user email from auth.users
-            user_result = supabase_admin.auth.admin.get_user_by_id(member["user_id"])
-            members.append(
-                {
-                    **member,
-                    "email": user_result.user.email if user_result.user else None,
-                }
-            )
-
-        return members
+        return result.data
+        
 
     except Exception as e:
         raise HTTPException(
