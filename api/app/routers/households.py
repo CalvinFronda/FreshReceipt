@@ -6,9 +6,11 @@ from app.core.supabase import supabase, supabase_admin
 from app.dependencies.auth import get_current_user
 from app.dependencies.household import (
     get_user_households,
+    verify_header_household_access,
     verify_household_access,
 )
 from app.models.auth import User
+from app.models.food_item import FoodItem
 from app.models.household import (
     HouseholdCreate,
     HouseholdMember,
@@ -42,6 +44,35 @@ async def list_user_households(current_user: User = Depends(get_current_user)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch households: {str(e)}",
+        )
+
+
+@router.get("/food-items", response_model=List[FoodItem])
+async def list_food_items(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    access: dict = Depends(verify_header_household_access),
+):
+    try:
+        from app.core.supabase import get_authenticated_supabase
+
+        auth_supabase = get_authenticated_supabase(request)
+        household_id = access["household_id"]
+
+        # get household items
+        result = (
+            auth_supabase.table("food_items")
+            .select("*")
+            .eq("household_id", household_id)
+            .execute()
+        )
+
+        return result.data
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get food items: {str(e)}",
         )
 
 
@@ -133,7 +164,6 @@ async def list_household_members(
         )
 
         return result.data
-        
 
     except Exception as e:
         raise HTTPException(

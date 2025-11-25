@@ -5,67 +5,13 @@ import { StatusBar } from "expo-status-bar";
 import { FlatList, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-// Mocking the FoodItem model from api/app/models/food_item.py
-interface FoodItem {
-  id: string;
-  name: string;
-  price: number;
-  quantity: number;
-  unit?: string;
-  purchase_date: string; // ISO string for simplicity in frontend
-  expiry_date?: string;
-}
-
-const MOCK_INVENTORY: FoodItem[] = [
-  {
-    id: "1",
-    name: "Organic Bananas",
-    price: 2.99,
-    quantity: 1,
-    unit: "bunch",
-    purchase_date: "2023-10-25T10:00:00Z",
-    expiry_date: "2023-11-01T00:00:00Z",
-  },
-  {
-    id: "2",
-    name: "Almond Milk",
-    price: 4.49,
-    quantity: 1,
-    unit: "carton",
-    purchase_date: "2023-10-26T14:30:00Z",
-    expiry_date: "2023-11-15T00:00:00Z",
-  },
-  {
-    id: "3",
-    name: "Sourdough Bread",
-    price: 5.5,
-    quantity: 1,
-    unit: "loaf",
-    purchase_date: "2023-10-27T09:15:00Z",
-    expiry_date: "2023-11-03T00:00:00Z",
-  },
-  {
-    id: "4",
-    name: "Eggs (Dozen)",
-    price: 3.99,
-    quantity: 2,
-    unit: "carton",
-    purchase_date: "2023-10-28T11:00:00Z",
-    expiry_date: "2023-11-20T00:00:00Z",
-  },
-  {
-    id: "5",
-    name: "Spinach",
-    price: 2.49,
-    quantity: 1,
-    unit: "bag",
-    purchase_date: "2023-10-29T16:45:00Z",
-    expiry_date: "2023-11-05T00:00:00Z",
-  },
-];
+import { useFoodItems } from "@/src/api/hooks/useFoodItems";
+import { FoodItem } from "@/src/api/types";
+import { ActivityIndicator } from "react-native";
 
 export default function InventoryScreen() {
   const backgroundColor = useThemeColor({}, "background");
+  const { data: inventory, isLoading, error, refetch } = useFoodItems();
 
   const renderItem = ({ item }: { item: FoodItem }) => (
     <View style={styles.itemContainer}>
@@ -89,6 +35,33 @@ export default function InventoryScreen() {
     </View>
   );
 
+  if (isLoading) {
+    return (
+      <SafeAreaView
+        style={[
+          styles.container,
+          { backgroundColor, justifyContent: "center", alignItems: "center" },
+        ]}
+      >
+        <ActivityIndicator size="large" />
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView
+        style={[
+          styles.container,
+          { backgroundColor, justifyContent: "center", alignItems: "center" },
+        ]}
+      >
+        <ThemedText>Error loading inventory</ThemedText>
+        <ThemedText>{error.message}</ThemedText>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor }]}>
       <StatusBar style="auto" />
@@ -96,11 +69,13 @@ export default function InventoryScreen() {
         <ThemedText type="title">Inventory</ThemedText>
       </ThemedView>
       <FlatList
-        data={MOCK_INVENTORY}
+        data={inventory}
         renderItem={renderItem}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
+        onRefresh={refetch}
+        refreshing={isLoading}
       />
     </SafeAreaView>
   );

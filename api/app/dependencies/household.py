@@ -1,7 +1,7 @@
 import asyncio
 from typing import Optional
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 
 from app.core.supabase import supabase_admin
 from app.dependencies.auth import get_current_user
@@ -116,9 +116,7 @@ async def get_current_household(
         await verify_household_access(household_id, current_user)
         return household_id
 
-
     return await get_user_primary_household(current_user)
-
 
 
 async def verify_household_access(
@@ -170,10 +168,32 @@ async def verify_household_access(
 
         return {"household_id": household_id, "role": user_role}
 
-    except HTTPException:
-        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to verify household access: {str(e)}",
         )
+
+
+# TODO: Maybe this is extra?
+def get_household_header(request: Request) -> str:
+    """
+    Extract household ID from X-Household-ID header.
+    """
+    household_id = request.headers.get("X-Household-ID")
+    if not household_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="X-Household-ID header is required",
+        )
+    return household_id
+
+
+async def verify_header_household_access(
+    household_id: str = Depends(get_household_header),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """
+    Verify access to the household specified in the header.
+    """
+    return await verify_household_access(household_id, current_user)
